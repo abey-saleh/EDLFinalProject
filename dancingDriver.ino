@@ -20,7 +20,7 @@ bool isTimeForNewMove = false;
 
 void setup()
 {
-  pinMode(leftEncoderPin, INPUT);
+//  pinMode(leftEncoderPin, INPUT); DONT NEED
   pinMode(rightEncoderPin, INPUT);
 
 
