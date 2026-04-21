@@ -10,7 +10,7 @@ volatile long edgeCount = 0;
 volatile long leftCount = 0;
 volatile long rightCount = 0;
 
-const int leftEncoderPin = 3;  
+// const int leftEncoderPin = 3;  DONT NEED
 const int rightEncoderPin = 2; 
 
 unsigned long lastTime = 0;
@@ -23,7 +23,7 @@ void setup() {
   pinMode(rightEncoderPin, INPUT);
 
   attachInterrupt(digitalPinToInterrupt(rightEncoderPin), ISR_encoder, RISING);
-  attachInterrupt(digitalPinToInterrupt(leftEncoderPin), ISR_encoder, RISING);
+//  attachInterrupt(digitalPinToInterrupt(leftEncoderPin), ISR_encoder, RISING); DONT NEED 
 
   pinMode(pinLeftForward, OUTPUT);
   pinMode(pinLeftBackward, OUTPUT);
