@@ -5,80 +5,83 @@ const int pinRightPWM = 9;
 const int pinLeftForward = 11;
 const int pinLeftBackward = 12;
 const int pinLeftPWM = 10;
-
 volatile long edgeCount = 0;
+
+
 volatile long leftCount = 0;
 volatile long rightCount = 0;
 
-// const int leftEncoderPin = 3;  DONT NEED
-const int rightEncoderPin = 2; 
 
-unsigned long lastTime = 0;
+const int leftEncoderPin  = 3;   // INT0
+const int rightEncoderPin = 2;   // INT1
 
-// Variable to track the current random move so it doesn't repeat the same move twice
 int currentMove = -1; 
+bool isTimeForNewMove = false;
 
-void setup() {
+void setup()
+{
   pinMode(leftEncoderPin, INPUT);
   pinMode(rightEncoderPin, INPUT);
 
+
   attachInterrupt(digitalPinToInterrupt(rightEncoderPin), ISR_encoder, RISING);
-//  attachInterrupt(digitalPinToInterrupt(leftEncoderPin), ISR_encoder, RISING); DONT NEED 
 
   pinMode(pinLeftForward, OUTPUT);
   pinMode(pinLeftBackward, OUTPUT);
   pinMode(pinLeftPWM, OUTPUT);
+  digitalWrite(pinLeftForward, LOW);
   analogWrite(pinLeftPWM, 0);
+
 
   pinMode(pinRightForward, OUTPUT);
   pinMode(pinRightBackward, OUTPUT);
   pinMode(pinRightPWM, OUTPUT);
+  digitalWrite(pinRightForward, LOW);
   analogWrite(pinRightPWM, 0);
 
   pinMode(pinON, INPUT_PULLUP);
   Serial.begin(9600);
-  
-  // Initialize the random number generator using noise from an unconnected analog pin
-  randomSeed(analogRead(A5)); 
-  
-  // Pick the very first move to start the dance
-  pickRandomDanceMove();
 }
 
-void loop() {
-  // John's math to control the speed 
+unsigned long lastTime = 0;
+int old_avg_count_value = 0;
+
+float smoothed = 0;   // global or static
+
+void loop() 
+{
+
   unsigned long currentTime = millis();
-  
-  // every half a second, read edgeCount and reset edgeCount variable 
-  // (Note: your code says 1000, which is 1 second, but leaving it as you wrote it!)
-  if (currentTime - lastTime > 1000) {
-    long count;
-    noInterrupts(); // critical section start
-    count = edgeCount; // read
-    edgeCount = 0; // reset
-    interrupts(); // critical section end
+  long count;
+  //every half a second, read edgeCount and reset edgeCount variable
+  if (currentTime - lastTime > 700)
+   {
+    noInterrupts();       // critical section start
+    count = edgeCount;    // read
+    edgeCount = 0;        // reset
+    interrupts();         // critical section end
     lastTime = currentTime;
 
-    int avg_count_value = count / 4;
-    
+    int raw = constrain(count / 4, 0, 200);
+    float alpha = 0.1;
+    smoothed = alpha * raw + (1 - alpha) * smoothed;
+
+    int avg_count_value = int(smoothed);
+
+    //logic for making the robot change dance moves
+    if (abs(avg_count_value - old_avg_count_value) >= 40)
+      {
+        isTimeForNewMove = true;
+        pickRandomDanceMove();
+        isTimeForNewMove = false;
+        old_avg_count_value = avg_count_value;
+      }
+
+    //adjust speed
     analogWrite(pinRightPWM, avg_count_value);
-    analogWrite(pinLeftPWM, avg_count_value); 
-    
-    Serial.println(count);
+    analogWrite(pinLeftPWM, avg_count_value);
+    Serial.println(avg_count_value);
   }
-// checking here to see if it is time for a new dance 
-  if (isTimeForNewMove() == true) {
-      pickRandomDanceMove();
-  }
-}
-
-void ISR_encoder() {
-  edgeCount++; // count rising edges
-}
-
-// Placeholder for future logic
-bool isTimeForNewMove() {
-  return false; 
 }
 
 void pickRandomDanceMove() {
@@ -129,4 +132,9 @@ void pickRandomDanceMove() {
       digitalWrite(pinRightBackward, HIGH);
       break;
   }
+}
+
+
+void ISR_encoder() {
+    edgeCount++;   // count rising edges
 }
