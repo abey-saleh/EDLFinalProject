@@ -12,7 +12,7 @@ volatile long leftCount = 0;
 volatile long rightCount = 0;
 
 
-const int leftEncoderPin  = 3;   // INT0
+// const int leftEncoderPin  = 3;   // DONT NEED
 const int rightEncoderPin = 2;   // INT1
 
 int currentMove = -1; 
