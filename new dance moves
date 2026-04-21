@@ -1,0 +1,207 @@
+const int pinON = 6;
+const int pinRightForward = 7;
+const int pinRightBackward = 8;
+const int pinRightPWM = 9;
+const int pinLeftForward = 11;
+const int pinLeftBackward = 12;
+const int pinLeftPWM = 10;
+
+volatile long edgeCount = 0;
+volatile long leftCount = 0;
+volatile long rightCount = 0;
+
+const int leftEncoderPin  = 3;   // INT0
+const int rightEncoderPin = 2;   // INT1
+
+int currentMove = -1;
+
+unsigned long lastTime = 0;
+int old_avg_count_value = 0;
+float smoothed = 0;
+
+
+// ─────────────────────────────────────────────
+//  SETUP
+// ─────────────────────────────────────────────
+void setup() {
+  pinMode(leftEncoderPin, INPUT);
+  pinMode(rightEncoderPin, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(rightEncoderPin), ISR_encoder, RISING);
+
+  pinMode(pinLeftForward,  OUTPUT);
+  pinMode(pinLeftBackward, OUTPUT);
+  pinMode(pinLeftPWM,      OUTPUT);
+  digitalWrite(pinLeftForward,  LOW);
+  analogWrite(pinLeftPWM, 0);
+
+  pinMode(pinRightForward,  OUTPUT);
+  pinMode(pinRightBackward, OUTPUT);
+  pinMode(pinRightPWM,      OUTPUT);
+  digitalWrite(pinRightForward, LOW);
+  analogWrite(pinRightPWM, 0);
+
+  pinMode(pinON, INPUT_PULLUP);
+  Serial.begin(9600);
+}
+
+
+// ─────────────────────────────────────────────
+//  LOOP
+// ─────────────────────────────────────────────
+void loop() {
+  unsigned long currentTime = millis();
+
+  if (currentTime - lastTime > 700) {
+    noInterrupts();
+    long count = edgeCount;
+    edgeCount = 0;
+    interrupts();
+    lastTime = currentTime;
+
+    int raw = constrain(count / 15, 0, 200);
+    float alpha = 0.5;
+    smoothed = alpha * raw + (1 - alpha) * smoothed;
+
+    int avg_count_value = int(smoothed);
+
+    if (abs(avg_count_value - old_avg_count_value) >= 20) {
+      old_avg_count_value = avg_count_value;
+      pickRandomDanceMove();
+    }
+
+    analogWrite(pinRightPWM, avg_count_value);
+    analogWrite(pinLeftPWM,  avg_count_value);
+    Serial.println(avg_count_value);
+  }
+}
+
+
+// ─────────────────────────────────────────────
+//  BEAT CHANGED HELPER
+// ─────────────────────────────────────────────
+bool beatChanged() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastTime > 700) {
+    noInterrupts();
+    long count = edgeCount;
+    edgeCount = 0;
+    interrupts();
+    lastTime = currentTime;
+
+    int raw = constrain(count / 15, 0, 200);
+    float alpha = 0.5;
+    smoothed = alpha * raw + (1 - alpha) * smoothed;
+    int avg_count_value = int(smoothed);
+
+    analogWrite(pinRightPWM, avg_count_value);
+    analogWrite(pinLeftPWM,  avg_count_value);
+    Serial.println(avg_count_value);
+
+    if (abs(avg_count_value - old_avg_count_value) >= 20) {
+      old_avg_count_value = avg_count_value;
+      return true;
+    }
+  }
+  return false;
+}
+
+
+// ─────────────────────────────────────────────
+//  STOP ALL MOTORS
+// ─────────────────────────────────────────────
+void stopMotors() {
+  digitalWrite(pinLeftForward,   LOW);
+  digitalWrite(pinLeftBackward,  LOW);
+  digitalWrite(pinRightForward,  LOW);
+  digitalWrite(pinRightBackward, LOW);
+}
+
+
+// ─────────────────────────────────────────────
+//  PICK RANDOM DANCE MOVE
+// ─────────────────────────────────────────────
+void pickRandomDanceMove() {
+  int prevMove = currentMove;
+  int nextMove;
+
+  do {
+    nextMove = random(0, 4);
+  } while (nextMove == prevMove);
+
+  currentMove = nextMove;
+
+  stopMotors();
+  delay(50);
+
+  switch (currentMove) {
+
+    case 0:
+      Serial.println("Dancing: FORWARD-BACK");
+      while (true) {
+        digitalWrite(pinLeftForward,  HIGH);
+        digitalWrite(pinRightForward, HIGH);
+        delay(400);
+        stopMotors();
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+        delay(100);
+
+        digitalWrite(pinLeftBackward,  HIGH);
+        digitalWrite(pinRightBackward, HIGH);
+        delay(400);
+        stopMotors();
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+        delay(100);
+      }
+      break;
+
+    case 1:
+      Serial.println("Dancing: SHUFFLE");
+      while (true) {
+        digitalWrite(pinLeftForward, HIGH);
+        delay(100);
+        digitalWrite(pinLeftForward, LOW);
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+
+        digitalWrite(pinRightForward, HIGH);
+        delay(100);
+        digitalWrite(pinRightForward, LOW);
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+
+        digitalWrite(pinLeftBackward, HIGH);
+        delay(100);
+        digitalWrite(pinLeftBackward, LOW);
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+
+        digitalWrite(pinRightBackward, HIGH);
+        delay(100);
+        digitalWrite(pinRightBackward, LOW);
+        if (beatChanged()) { pickRandomDanceMove(); return; }
+      }
+      break;
+
+    case 2:
+      Serial.println("Dancing: SPIN LEFT");
+      digitalWrite(pinLeftBackward, HIGH);
+      digitalWrite(pinRightForward, HIGH);
+      delay(400);
+      stopMotors();
+      break;
+
+    case 3:
+      Serial.println("Dancing: SPIN RIGHT");
+      digitalWrite(pinLeftForward,   HIGH);
+      digitalWrite(pinRightBackward, HIGH);
+      delay(400);
+      stopMotors();
+      break;
+  }
+}
+
+
+// ─────────────────────────────────────────────
+//  ENCODER ISR
+// ─────────────────────────────────────────────
+void ISR_encoder() {
+  edgeCount++;
+}
