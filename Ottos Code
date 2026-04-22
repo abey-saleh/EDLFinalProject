@@ -16,7 +16,7 @@ volatile long rightCount = 0;
 const int leftEncoderPin  = 3;
 const int rightEncoderPin = 2;
 
-const int MIN_PWM = 60;
+const int MIN_PWM = 20;
 
 int currentMove = -1;
 int lastPrintedMove = -1;
