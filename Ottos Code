@@ -6,6 +6,9 @@ const int pinLeftForward = 11;
 const int pinLeftBackward = 12;
 const int pinLeftPWM = 10;
 
+const int pinLED_L = 3;   // PWM capable
+const int pinLED_R = 13;  // digital only
+
 volatile long edgeCount = 0;
 volatile long leftCount = 0;
 volatile long rightCount = 0;
@@ -21,6 +24,7 @@ int lastPrintedMove = -1;
 unsigned long lastTime = 0;
 int old_avg_count_value = 0;
 float smoothed = 0;
+int current_avg_count_value = MIN_PWM;
 
 
 // ─────────────────────────────────────────────
@@ -44,8 +48,23 @@ void setup() {
   digitalWrite(pinRightForward, LOW);
   analogWrite(pinRightPWM, 0);
 
+  pinMode(pinLED_L, OUTPUT);
+  pinMode(pinLED_R, OUTPUT);
+
   pinMode(pinON, INPUT_PULLUP);
   Serial.begin(9600);
+}
+
+
+// ─────────────────────────────────────────────
+//  UPDATE LEDs
+//  left/right = which side is active
+//  LEDs brightness tracks beat via current_avg_count_value
+//  pin 13 is digital only so just on/off
+// ─────────────────────────────────────────────
+void updateLEDs(bool left, bool right) {
+  analogWrite(pinLED_L, left  ? current_avg_count_value : 0);
+  digitalWrite(pinLED_R, right ? HIGH : LOW);
 }
 
 
@@ -66,15 +85,15 @@ void loop() {
     float alpha = 0.5;
     smoothed = alpha * raw + (1 - alpha) * smoothed;
 
-    int avg_count_value = max(int(smoothed), MIN_PWM);
+    current_avg_count_value = max(int(smoothed), MIN_PWM);
 
-    if (abs(avg_count_value - old_avg_count_value) >= 20) {
-      old_avg_count_value = avg_count_value;
+    if (abs(current_avg_count_value - old_avg_count_value) >= 20) {
+      old_avg_count_value = current_avg_count_value;
       pickRandomDanceMove();
     }
 
-    analogWrite(pinRightPWM, avg_count_value);
-    analogWrite(pinLeftPWM,  avg_count_value);
+    analogWrite(pinRightPWM, current_avg_count_value);
+    analogWrite(pinLeftPWM,  current_avg_count_value);
   }
 }
 
@@ -94,13 +113,13 @@ bool beatChanged() {
     int raw = constrain(count / 15, 0, 200);
     float alpha = 0.5;
     smoothed = alpha * raw + (1 - alpha) * smoothed;
-    int avg_count_value = max(int(smoothed), MIN_PWM);
+    current_avg_count_value = max(int(smoothed), MIN_PWM);
 
-    analogWrite(pinRightPWM, avg_count_value);
-    analogWrite(pinLeftPWM,  avg_count_value);
+    analogWrite(pinRightPWM, current_avg_count_value);
+    analogWrite(pinLeftPWM,  current_avg_count_value);
 
-    if (abs(avg_count_value - old_avg_count_value) >= 20) {
-      old_avg_count_value = avg_count_value;
+    if (abs(current_avg_count_value - old_avg_count_value) >= 20) {
+      old_avg_count_value = current_avg_count_value;
       return true;
     }
   }
@@ -138,77 +157,85 @@ void pickRandomDanceMove() {
   }
 
   switch (currentMove) {
- // ── CASE 0: SHUFFLE loop ──
+ // ── CASE 0: SHUFFLE — LEDs alternate with shuffle steps ──
     case 0:
       while (true) {
         stopMotors();
+        updateLEDs(true, false);
         digitalWrite(pinLeftForward,   HIGH);
         digitalWrite(pinRightBackward, HIGH);
-        delay(120);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        delay(170);
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
 
         stopMotors();
+        updateLEDs(false, true);
         digitalWrite(pinRightForward,  HIGH);
         digitalWrite(pinLeftBackward,  HIGH);
-        delay(120);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        delay(170);
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
       }
       break;
-      
-
-
-    // ── CASE 1: FORWARD-BACK loop ──
+   
+    
+    // ── CASE 1: FORWARD-BACK — both LEDs on together ──
     case 1:
       while (true) {
         stopMotors();
+        updateLEDs(true, true);
         digitalWrite(pinLeftForward,  HIGH);
         digitalWrite(pinRightForward, HIGH);
         delay(400);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
 
         stopMotors();
+        updateLEDs(false, false);
         digitalWrite(pinLeftBackward,  HIGH);
         digitalWrite(pinRightBackward, HIGH);
         delay(400);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
       }
       break;
 
    
 
-    // ── CASE 2: SPIN LEFT — holds until beat changes ──
+    // ── CASE 2: SPIN LEFT — left LED only ──
     case 2:
+      updateLEDs(true, false);
       digitalWrite(pinLeftBackward, HIGH);
       digitalWrite(pinRightForward, HIGH);
       while (true) {
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
         delay(50);
       }
       break;
 
-    // ── CASE 3: SPIN RIGHT — holds until beat changes ──
+    // ── CASE 3: SPIN RIGHT — right LED only ──
     case 3:
+      updateLEDs(false, true);
       digitalWrite(pinLeftForward,   HIGH);
       digitalWrite(pinRightBackward, HIGH);
       while (true) {
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
         delay(50);
       }
       break;
 
-    // ── CASE 4: FORWARD ~1 second, then auto-switch ──
+    // ── CASE 4: FORWARD CRUISE — both LEDs on ──
     case 4:
       stopMotors();
+      updateLEDs(true, true);
       digitalWrite(pinLeftForward,  HIGH);
       digitalWrite(pinRightForward, HIGH);
       delay(1000);
       stopMotors();
+      updateLEDs(false, false);
       pickRandomDanceMove();
       return;
 
-    // ── CASE 5: BACKWARD ~1 second, then auto-switch ──
+    // ── CASE 5: BACKWARD CRUISE — both LEDs off (going dark) ──
     case 5:
       stopMotors();
+      updateLEDs(false, false);
       digitalWrite(pinLeftBackward,  HIGH);
       digitalWrite(pinRightBackward, HIGH);
       delay(1000);
@@ -216,20 +243,22 @@ void pickRandomDanceMove() {
       pickRandomDanceMove();
       return;
 
-    // ── CASE 6: ALTERNATING SPIN loop ──
+    // ── CASE 6: ALTERNATING SPIN — LED follows spin direction ──
     case 6:
       while (true) {
         stopMotors();
+        updateLEDs(false, true);
         digitalWrite(pinLeftForward,   HIGH);
         digitalWrite(pinRightBackward, HIGH);
         delay(1500);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
 
         stopMotors();
+        updateLEDs(true, false);
         digitalWrite(pinLeftBackward, HIGH);
         digitalWrite(pinRightForward, HIGH);
         delay(1500);
-        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        if (beatChanged()) { stopMotors(); updateLEDs(false, false); pickRandomDanceMove(); return; }
       }
       break;
   }
