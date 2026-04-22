@@ -10,10 +10,13 @@ volatile long edgeCount = 0;
 volatile long leftCount = 0;
 volatile long rightCount = 0;
 
-const int leftEncoderPin  = 3;   // INT0
-const int rightEncoderPin = 2;   // INT1
+const int leftEncoderPin  = 3;
+const int rightEncoderPin = 2;
+
+const int MIN_PWM = 60;
 
 int currentMove = -1;
+int lastPrintedMove = -1;
 
 unsigned long lastTime = 0;
 int old_avg_count_value = 0;
@@ -32,7 +35,7 @@ void setup() {
   pinMode(pinLeftForward,  OUTPUT);
   pinMode(pinLeftBackward, OUTPUT);
   pinMode(pinLeftPWM,      OUTPUT);
-  digitalWrite(pinLeftForward,  LOW);
+  digitalWrite(pinLeftForward, LOW);
   analogWrite(pinLeftPWM, 0);
 
   pinMode(pinRightForward,  OUTPUT);
@@ -63,7 +66,7 @@ void loop() {
     float alpha = 0.5;
     smoothed = alpha * raw + (1 - alpha) * smoothed;
 
-    int avg_count_value = int(smoothed);
+    int avg_count_value = max(int(smoothed), MIN_PWM);
 
     if (abs(avg_count_value - old_avg_count_value) >= 20) {
       old_avg_count_value = avg_count_value;
@@ -72,7 +75,6 @@ void loop() {
 
     analogWrite(pinRightPWM, avg_count_value);
     analogWrite(pinLeftPWM,  avg_count_value);
-    Serial.println(avg_count_value);
   }
 }
 
@@ -92,11 +94,10 @@ bool beatChanged() {
     int raw = constrain(count / 15, 0, 200);
     float alpha = 0.5;
     smoothed = alpha * raw + (1 - alpha) * smoothed;
-    int avg_count_value = int(smoothed);
+    int avg_count_value = max(int(smoothed), MIN_PWM);
 
     analogWrite(pinRightPWM, avg_count_value);
     analogWrite(pinLeftPWM,  avg_count_value);
-    Serial.println(avg_count_value);
 
     if (abs(avg_count_value - old_avg_count_value) >= 20) {
       old_avg_count_value = avg_count_value;
@@ -126,74 +127,110 @@ void pickRandomDanceMove() {
   int nextMove;
 
   do {
-    nextMove = random(0, 4);
+    nextMove = random(0, 7);
   } while (nextMove == prevMove);
 
   currentMove = nextMove;
 
-  stopMotors();
-  delay(50);
+  if (currentMove != lastPrintedMove) {
+    Serial.print("Move: "); Serial.println(currentMove);
+    lastPrintedMove = currentMove;
+  }
 
   switch (currentMove) {
-
+ // ── CASE 0: SHUFFLE loop ──
     case 0:
-      Serial.println("Dancing: FORWARD-BACK");
       while (true) {
+        stopMotors();
+        digitalWrite(pinLeftForward,   HIGH);
+        digitalWrite(pinRightBackward, HIGH);
+        delay(120);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+
+        stopMotors();
+        digitalWrite(pinRightForward,  HIGH);
+        digitalWrite(pinLeftBackward,  HIGH);
+        delay(120);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+      }
+      break;
+      
+
+
+    // ── CASE 1: FORWARD-BACK loop ──
+    case 1:
+      while (true) {
+        stopMotors();
         digitalWrite(pinLeftForward,  HIGH);
         digitalWrite(pinRightForward, HIGH);
         delay(400);
-        stopMotors();
-        if (beatChanged()) { pickRandomDanceMove(); return; }
-        delay(100);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
 
+        stopMotors();
         digitalWrite(pinLeftBackward,  HIGH);
         digitalWrite(pinRightBackward, HIGH);
         delay(400);
-        stopMotors();
-        if (beatChanged()) { pickRandomDanceMove(); return; }
-        delay(100);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
       }
       break;
 
-    case 1:
-      Serial.println("Dancing: SHUFFLE");
-      while (true) {
-        digitalWrite(pinLeftForward, HIGH);
-        delay(100);
-        digitalWrite(pinLeftForward, LOW);
-        if (beatChanged()) { pickRandomDanceMove(); return; }
+   
 
-        digitalWrite(pinRightForward, HIGH);
-        delay(100);
-        digitalWrite(pinRightForward, LOW);
-        if (beatChanged()) { pickRandomDanceMove(); return; }
-
-        digitalWrite(pinLeftBackward, HIGH);
-        delay(100);
-        digitalWrite(pinLeftBackward, LOW);
-        if (beatChanged()) { pickRandomDanceMove(); return; }
-
-        digitalWrite(pinRightBackward, HIGH);
-        delay(100);
-        digitalWrite(pinRightBackward, LOW);
-        if (beatChanged()) { pickRandomDanceMove(); return; }
-      }
-      break;
-
+    // ── CASE 2: SPIN LEFT — holds until beat changes ──
     case 2:
-      Serial.println("Dancing: SPIN LEFT");
       digitalWrite(pinLeftBackward, HIGH);
       digitalWrite(pinRightForward, HIGH);
-      delay(400);
-      stopMotors();
+      while (true) {
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        delay(50);
+      }
       break;
 
+    // ── CASE 3: SPIN RIGHT — holds until beat changes ──
     case 3:
-      Serial.println("Dancing: SPIN RIGHT");
       digitalWrite(pinLeftForward,   HIGH);
       digitalWrite(pinRightBackward, HIGH);
-      delay(400);
+      while (true) {
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+        delay(50);
+      }
+      break;
+
+    // ── CASE 4: FORWARD ~1 second, then auto-switch ──
+    case 4:
       stopMotors();
+      digitalWrite(pinLeftForward,  HIGH);
+      digitalWrite(pinRightForward, HIGH);
+      delay(1000);
+      stopMotors();
+      pickRandomDanceMove();
+      return;
+
+    // ── CASE 5: BACKWARD ~1 second, then auto-switch ──
+    case 5:
+      stopMotors();
+      digitalWrite(pinLeftBackward,  HIGH);
+      digitalWrite(pinRightBackward, HIGH);
+      delay(1000);
+      stopMotors();
+      pickRandomDanceMove();
+      return;
+
+    // ── CASE 6: ALTERNATING SPIN loop ──
+    case 6:
+      while (true) {
+        stopMotors();
+        digitalWrite(pinLeftForward,   HIGH);
+        digitalWrite(pinRightBackward, HIGH);
+        delay(1500);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+
+        stopMotors();
+        digitalWrite(pinLeftBackward, HIGH);
+        digitalWrite(pinRightForward, HIGH);
+        delay(1500);
+        if (beatChanged()) { stopMotors(); pickRandomDanceMove(); return; }
+      }
       break;
   }
 }
